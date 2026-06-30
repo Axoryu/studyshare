@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{% block title %}StudyShare{% endblock %}</title>
+<meta name="description" content="StudyShare — a simple place to upload, browse, and download classwork and homework for the whole class.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2222%22 fill=%22%234D8DFF%22/><text x=%2250%22 y=%2266%22 font-size=%2256%22 font-family=%22sans-serif%22 font-weight=%22700%22 fill=%22white%22 text-anchor=%22middle%22>S</text></svg>">
+</head>
+<body class="{% block bodyclass %}{% endblock %}">
+
+<div class="bg-glow" aria-hidden="true"></div>
+
+<header class="site-header">
+  <div class="header-inner">
+    <a href="{{ url_for('index') }}" class="brand" aria-label="StudyShare home">
+      <span class="brand-mark">S</span>
+      <span class="brand-name">StudyShare</span>
+    </a>
+
+    <div class="search-wrap">
+      <div class="search-bar" id="globalSearch">
+        <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="searchInput" placeholder="Search by title…" autocomplete="off" aria-label="Search files by title">
+        <kbd class="search-kbd">/</kbd>
+      </div>
+      <div class="search-results" id="searchResults" hidden></div>
+    </div>
+
+    <button class="btn btn-accent btn-upload" id="openUploadBtn" type="button">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>
+      <span>Upload</span>
+    </button>
+  </div>
+
+  <nav class="subject-nav" aria-label="Subjects">
+    <div class="subject-nav-inner">
+      <a href="{{ url_for('index') }}" class="chip {% if request.path == '/' %}chip-active{% endif %}">All Subjects</a>
+      {% for s in (subjects or []) %}
+      <a href="{{ url_for('subject_page', slug=s.slug) }}" class="chip {% if subject is defined and subject.slug == s.slug %}chip-active{% endif %}">{{ s.name }}</a>
+      {% endfor %}
+    </div>
+  </nav>
+</header>
+
+<main id="mainContent">
+{% with messages = get_flashed_messages() %}
+  {% if messages %}
+  <div class="flash-stack">
+    {% for m in messages %}<div class="flash-msg">{{ m }}</div>{% endfor %}
+  </div>
+  {% endif %}
+{% endwith %}
+{% block content %}{% endblock %}
+</main>
+
+<footer class="site-footer">
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <span class="brand-mark small">S</span>
+      <span>StudyShare</span>
+    </div>
+    <p class="footer-note">Built for our class — upload, browse, and download classwork in one place.</p>
+  </div>
+</footer>
+
+<!-- Upload modal -->
+<div class="modal-overlay" id="uploadOverlay" hidden>
+  <div class="modal glass-panel" role="dialog" aria-modal="true" aria-labelledby="uploadTitle">
+    <div class="modal-head">
+      <h2 id="uploadTitle">Upload a file</h2>
+      <button class="modal-close" id="closeUploadBtn" aria-label="Close upload dialog">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+
+    <form id="uploadForm" novalidate>
+      <div class="field">
+        <label for="titleInput">Title</label>
+        <input type="text" id="titleInput" name="title" placeholder="e.g. Chapter 4 Notes" required maxlength="120">
+      </div>
+
+      <div class="field">
+        <label for="subjectSelect">Subject</label>
+        <select id="subjectSelect" name="subject" required>
+          <option value="" disabled {% if not (subject is defined) %}selected{% endif %}>Choose a subject</option>
+          {% for s in SUBJECTS %}
+          <option value="{{ s.slug }}" {% if subject is defined and subject.slug == s.slug %}selected{% endif %}>{{ s.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="fileInput">File</label>
+        <div class="dropzone" id="dropzone" tabindex="0">
+          <input type="file" id="fileInput" name="file" accept=".jpg,.jpeg,.png,.webp,.pdf" required hidden>
+          <div class="dropzone-content" id="dropzoneContent">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <p><strong>Click to choose</strong> or drag a file here</p>
+            <p class="dropzone-hint">JPG, PNG, WEBP, or PDF · up to 25 MB</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-errors" id="formErrors" hidden></div>
+
+      <button type="submit" class="btn btn-accent btn-full" id="submitUploadBtn">
+        <span class="btn-label">Upload file</span>
+        <span class="btn-spinner" hidden></span>
+      </button>
+    </form>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<!-- Lightbox for image preview -->
+<div class="lightbox" id="lightbox" hidden>
+  <button class="lightbox-close" id="lightboxClose" aria-label="Close preview">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+  </button>
+  <img id="lightboxImg" src="" alt="">
+</div>
+
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

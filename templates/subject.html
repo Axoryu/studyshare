@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}{{ subject.name }} — StudyShare{% endblock %}
+{% block content %}
+
+<section class="subject-head">
+  <p class="eyebrow">{{ subject.tag }}</p>
+  <h1>{{ subject.name }}</h1>
+  <p class="hero-sub">{{ files|length }} file{% if files|length != 1 %}s{% endif %} shared{% if files %}, newest first{% endif %}.</p>
+</section>
+
+<section class="file-grid" id="fileGrid" aria-label="{{ subject.name }} files">
+  {% for f in files %}
+  <article class="file-card glass-panel" id="file-{{ f.id }}" data-title="{{ f.title|lower }}">
+    <div class="file-preview">
+      {% if f.file_type == 'image' %}
+      <img src="{{ url_for('serve_upload', stored_filename=f.stored_filename) }}"
+           alt="{{ f.title }}" loading="lazy"
+           class="file-preview-img"
+           data-lightbox="{{ url_for('serve_upload', stored_filename=f.stored_filename) }}">
+      {% else %}
+      <a class="file-preview-pdf" href="{{ url_for('serve_upload', stored_filename=f.stored_filename) }}" target="_blank" rel="noopener">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <span>PDF</span>
+      </a>
+      {% endif %}
+    </div>
+    <div class="file-meta">
+      <h3 class="file-title">{{ f.title }}</h3>
+      <p class="file-date">{{ f.uploaded_display }}</p>
+    </div>
+    <a class="btn btn-ghost btn-full file-download" href="{{ url_for('download_upload', stored_filename=f.stored_filename) }}">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12l7 7 7-7"/></svg>
+      <span>Download</span>
+    </a>
+  </article>
+  {% else %}
+  <div class="empty-state">
+    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    <h3>No files yet</h3>
+    <p>Be the first to share something for {{ subject.name }}.</p>
+    <button class="btn btn-accent" id="emptyUploadBtn" type="button">Upload a file</button>
+  </div>
+  {% endfor %}
+</section>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.getElementById('emptyUploadBtn')?.addEventListener('click', () => {
+    document.getElementById('subjectSelect').value = "{{ subject.slug }}";
+    document.getElementById('openUploadBtn').click();
+  });
+</script>
+{% endblock %}
