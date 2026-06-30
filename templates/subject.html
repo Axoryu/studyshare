@@ -13,12 +13,12 @@
   <article class="file-card glass-panel" id="file-{{ f.id }}" data-title="{{ f.title|lower }}">
     <div class="file-preview">
       {% if f.file_type == 'image' %}
-      <img src="{{ url_for('serve_upload', stored_filename=f.stored_filename) }}"
+      <img src="{{ f.file_url }}"
            alt="{{ f.title }}" loading="lazy"
            class="file-preview-img"
-           data-lightbox="{{ url_for('serve_upload', stored_filename=f.stored_filename) }}">
+           data-lightbox="{{ f.file_url }}">
       {% else %}
-      <a class="file-preview-pdf" href="{{ url_for('serve_upload', stored_filename=f.stored_filename) }}" target="_blank" rel="noopener">
+      <a class="file-preview-pdf" href="{{ f.file_url }}" target="_blank" rel="noopener">
         <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
         <span>PDF</span>
       </a>
@@ -28,7 +28,7 @@
       <h3 class="file-title">{{ f.title }}</h3>
       <p class="file-date">{{ f.uploaded_display }}</p>
     </div>
-    <a class="btn btn-ghost btn-full file-download" href="{{ url_for('download_upload', stored_filename=f.stored_filename) }}">
+    <a class="btn btn-ghost btn-full file-download" href="{{ f.download_url }}">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12l7 7 7-7"/></svg>
       <span>Download</span>
     </a>

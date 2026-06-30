@@ -1,29 +1,51 @@
 """
 StudyShare — a minimal homework & classwork sharing site.
-Flask + SQLite + local file storage. No accounts, no login.
+Flask + SQLite (metadata) + Supabase Storage (file bytes). No accounts, no login.
+
+Storage backend: every uploaded image/PDF is sent straight to a Supabase
+Storage bucket called "uploads". SQLite only stores the file's metadata and
+its public Supabase URL (file_url) — it no longer touches the local disk for
+files, which keeps everything intact across Render redeploys/restarts.
 """
 
 import os
-import sqlite3
+from dotenv import load_dotenv
 import uuid
 from datetime import datetime
+from urllib.parse import quote
 
+load_dotenv()
+
+import sqlite3
 from flask import (
     Flask, render_template, request, redirect, url_for,
-    send_from_directory, jsonify, abort, flash
+    jsonify, abort, flash
 )
-from werkzeug.utils import secure_filename
+from supabase import create_client, Client
+
 
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 DB_PATH = os.path.join(BASE_DIR, "instance", "studyshare.db")
 
 ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "pdf"}
 MAX_CONTENT_LENGTH = 25 * 1024 * 1024  # 25 MB per upload
+
+# --- Supabase Storage ---
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+SUPABASE_BUCKET = "uploads"
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise RuntimeError(
+        "SUPABASE_URL and SUPABASE_KEY must be set as environment variables "
+        "(Render → your service → Environment)."
+    )
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Fixed subject list — slug, display name, short label for the tile mark.
 SUBJECTS = [
@@ -55,7 +77,7 @@ def inject_subjects():
 
 
 # ---------------------------------------------------------------------------
-# Database helpers
+# Database helpers (SQLite — unchanged storage engine, just a new column)
 # ---------------------------------------------------------------------------
 
 def get_db():
@@ -66,19 +88,26 @@ def get_db():
 
 def init_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
     conn = get_db()
     conn.execute("""
         CREATE TABLE IF NOT EXISTS files (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
             subject_slug TEXT NOT NULL,
-            stored_filename TEXT NOT NULL,
+            file_url TEXT NOT NULL,
             original_filename TEXT NOT NULL,
             file_type TEXT NOT NULL,        -- 'image' or 'pdf'
             uploaded_at TEXT NOT NULL
         )
     """)
+
+    # Migration safety net: if an older database from before the Supabase
+    # switch is still around, it will have "stored_filename" instead of
+    # "file_url". Rename the column in place rather than dropping data.
+    existing_cols = {row["name"] for row in conn.execute("PRAGMA table_info(files)")}
+    if "stored_filename" in existing_cols and "file_url" not in existing_cols:
+        conn.execute("ALTER TABLE files RENAME COLUMN stored_filename TO file_url")
+
     conn.commit()
     conn.close()
 
@@ -99,9 +128,53 @@ def allowed_file(filename):
     )
 
 
+def content_type_for(ext):
+    return {
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "png": "image/png",
+        "webp": "image/webp",
+        "pdf": "application/pdf",
+    }.get(ext, "application/octet-stream")
+
+
+def upload_to_supabase(file_storage, subject_slug):
+    """
+    Uploads a Werkzeug FileStorage object straight to Supabase Storage
+    (no local disk involved) and returns (file_url, stored_path).
+    Raises RuntimeError on failure.
+    """
+    ext = file_storage.filename.rsplit(".", 1)[-1].lower()
+    storage_path = f"{subject_slug}/{uuid.uuid4().hex}.{ext}"
+    file_bytes = file_storage.read()
+
+    try:
+        supabase.storage.from_(SUPABASE_BUCKET).upload(
+            path=storage_path,
+            file=file_bytes,
+            file_options={"content-type": content_type_for(ext)},
+        )
+    except Exception as exc:  # supabase-py raises its own StorageException
+        raise RuntimeError(f"Supabase upload failed: {exc}") from exc
+
+    file_url = supabase.storage.from_(SUPABASE_BUCKET).get_public_url(storage_path)
+    return file_url, storage_path
+
+
+def build_download_url(file_url, original_filename):
+    """
+    Supabase's public object endpoint honors a `download` query param that
+    forces Content-Disposition: attachment with the given filename, so the
+    Download button can link straight to Supabase — no proxy route needed.
+    """
+    separator = "&" if "?" in file_url else "?"
+    return f"{file_url}{separator}download={quote(original_filename)}"
+
+
 def row_to_dict(row):
     d = dict(row)
     d["subject_name"] = SUBJECT_BY_SLUG.get(d["subject_slug"], {}).get("name", d["subject_slug"])
+    d["download_url"] = build_download_url(d["file_url"], d["original_filename"])
     # Friendly date e.g. "12 Jun 2026"
     try:
         dt = datetime.fromisoformat(d["uploaded_at"])
@@ -149,7 +222,7 @@ def subject_page(slug):
 
 
 # ---------------------------------------------------------------------------
-# Routes — upload
+# Routes — upload (now goes straight to Supabase Storage, no local disk)
 # ---------------------------------------------------------------------------
 
 @app.route("/upload", methods=["POST"])
@@ -176,21 +249,26 @@ def upload_file():
         return redirect(request.referrer or url_for("index"))
 
     ftype = file_type_for(file.filename)
-    ext = file.filename.rsplit(".", 1)[-1].lower()
-    stored_filename = f"{uuid.uuid4().hex}.{ext}"
-    safe_original = secure_filename(file.filename)
+    safe_original = file.filename  # only used as a display/download name
 
-    save_path = os.path.join(UPLOAD_DIR, stored_filename)
-    file.save(save_path)
+    try:
+        file_url, _storage_path = upload_to_supabase(file, subject_slug)
+    except RuntimeError as exc:
+        errors = [str(exc)]
+        if request.headers.get("X-Requested-With") == "fetch":
+            return jsonify({"ok": False, "errors": errors}), 502
+        for e in errors:
+            flash(e)
+        return redirect(request.referrer or url_for("index"))
 
     uploaded_at = datetime.utcnow().isoformat()
 
     conn = get_db()
     conn.execute(
         """INSERT INTO files
-           (title, subject_slug, stored_filename, original_filename, file_type, uploaded_at)
+           (title, subject_slug, file_url, original_filename, file_type, uploaded_at)
            VALUES (?, ?, ?, ?, ?, ?)""",
-        (title, subject_slug, stored_filename, safe_original, ftype, uploaded_at),
+        (title, subject_slug, file_url, safe_original, ftype, uploaded_at),
     )
     conn.commit()
     conn.close()
@@ -199,30 +277,6 @@ def upload_file():
         return jsonify({"ok": True, "subject_slug": subject_slug})
 
     return redirect(url_for("subject_page", slug=subject_slug))
-
-
-# ---------------------------------------------------------------------------
-# Routes — file serving (view + download)
-# ---------------------------------------------------------------------------
-
-@app.route("/uploads/<path:stored_filename>")
-def serve_upload(stored_filename):
-    """Inline view (browser renders image/PDF directly)."""
-    return send_from_directory(UPLOAD_DIR, stored_filename, as_attachment=False)
-
-
-@app.route("/download/<path:stored_filename>")
-def download_upload(stored_filename):
-    """Force download with the original filename."""
-    conn = get_db()
-    row = conn.execute(
-        "SELECT * FROM files WHERE stored_filename = ?", (stored_filename,)
-    ).fetchone()
-    conn.close()
-    download_name = row["original_filename"] if row else stored_filename
-    return send_from_directory(
-        UPLOAD_DIR, stored_filename, as_attachment=True, download_name=download_name
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -262,6 +316,7 @@ def too_large(e):
 
 if __name__ == "__main__":
     init_db()
-    app.run(host="0.0.0.0", port=5050, debug=True)
+    port = int(os.getenv("PORT", 5050))
+    app.run(host="0.0.0.0", port=port, debug=True)
 else:
     init_db()
