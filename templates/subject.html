@@ -11,6 +11,9 @@
 <section class="file-grid" id="fileGrid" aria-label="{{ subject.name }} files">
   {% for f in files %}
   <article class="file-card glass-panel" id="file-{{ f.id }}" data-title="{{ f.title|lower }}">
+    <button class="file-delete-btn" data-file-id="{{ f.id }}" data-file-title="{{ f.title }}" title="Delete file"> {# Added delete button #}
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+    </button>
     <div class="file-preview">
       {% if f.file_type == 'image' %}
       <img src="{{ f.file_url }}"
