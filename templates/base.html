@@ -98,11 +98,15 @@
       <div class="field">
         <label for="fileInput">File</label>
         <div class="dropzone" id="dropzone" tabindex="0">
-          <input type="file" id="fileInput" name="file" accept=".jpg,.jpeg,.png,.webp,.pdf" required hidden>
+          <input type="file" id="fileInput" name="file" accept=".jpg,.jpeg,.png,.webp,.pdf" required hidden multiple> {# Added multiple attribute #}
           <div class="dropzone-content" id="dropzoneContent">
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            <p><strong>Click to choose</strong> or drag a file here</p>
-            <p class="dropzone-hint">JPG, PNG, WEBP, or PDF · up to 25 MB</p>
+            <p><strong>Click to choose files</strong> or drag them here</p> {# Updated text for multiple files #}
+            <p class="dropzone-hint">JPG, PNG, WEBP, or PDF · up to 25 MB each</p> {# Updated text for multiple files #}
+          </div>
+          <div class="upload-progress-wrap" id="uploadProgressWrap" hidden> {# Added upload progress elements #}
+            <div class="upload-progress-bar" id="uploadProgressBar"></div>
+            <div class="upload-progress-text" id="uploadProgressText"></div>
           </div>
         </div>
       </div>
